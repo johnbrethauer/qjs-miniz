@@ -1,6 +1,7 @@
 project('layout', 'c')
 
-quickjs = dependency('quickjs', fallback:['quickjs', 'quickjs_dep'], static:true)
+quickjs = dependency('quickjs', static:true)
+miniz = dependency('miniz', static:true)
 
 libtype = get_option('default_library')
 if libtype != 'static'
@@ -10,9 +11,9 @@ endif
 inc = include_directories('.')
 
 miniz_lib = library('miniz',
-  'qjs_miniz.c', 'miniz.c',
+  'qjs_miniz.c',
   include_directories:inc,
-  dependencies: [quickjs]
+  dependencies: [quickjs, miniz]
 )
 
 qjs_miniz_dep = declare_dependency(
