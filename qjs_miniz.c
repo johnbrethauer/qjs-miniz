@@ -18,13 +18,13 @@ static void js_writer_finalizer(JSRuntime *rt, JSValue val) {
 }
 
 static JSClassDef js_reader_class = {
-    "zip reader",
-    .finalizer = js_reader_finalizer,
+  "zip reader",
+  .finalizer = js_reader_finalizer,
 };
 
 static JSClassDef js_writer_class = {
-    "zip writer",
-    .finalizer = js_writer_finalizer,
+  "zip writer",
+  .finalizer = js_writer_finalizer,
 };
 
 static mz_zip_archive *js2reader(JSContext *js, JSValue v)
@@ -41,8 +41,17 @@ static JSValue js_miniz_read(JSContext *js, JSValue self, int argc, JSValue *arg
 {
   size_t len;
   void *data = JS_GetArrayBuffer(js, &len, argv[0]);
-  mz_zip_archive *zip = malloc(sizeof(*zip));
-  mz_zip_reader_init_mem(zip, data, len, 0);
+  if (!data) {
+    printf("Could not create data.\n");
+    return JS_UNDEFINED;
+  }
+  mz_zip_archive *zip = calloc(sizeof(*zip),1);
+  int success = mz_zip_reader_init_mem(zip, data, len, 0);
+  int err = mz_zip_get_last_error(zip);
+  if (err) {
+    printf("%s\n", mz_zip_get_error_string(err));
+    return JS_UNDEFINED;
+  }
   JSValue jszip = JS_NewObjectClass(js, js_reader_class_id);
   JS_SetOpaque(jszip, zip);
   return jszip;
@@ -60,8 +69,8 @@ static JSValue js_miniz_write(JSContext *js, JSValue self, int argc, JSValue *ar
 }
 
 static const JSCFunctionListEntry js_miniz_funcs[] = {
-  JS_CFUNC_DEF("read", 1, js_miniz_write),
-  JS_CFUNC_DEF("write", 1, js_miniz_read),
+  JS_CFUNC_DEF("read", 1, js_miniz_read),
+  JS_CFUNC_DEF("write", 1, js_miniz_write),
 };
 
 JSValue js_writer_add_file(JSContext *js, JSValue self, int argc, JSValue *argv)
@@ -104,27 +113,29 @@ JSValue js_reader_slurp(JSContext *js, JSValue self, int argc, JSValue *argv)
 {
   const char *file = JS_ToCString(js,argv[0]);
   mz_zip_archive *zip = js2reader(js, self);
-  mz_uint index = mz_zip_reader_locate_file(zip, file, NULL, 0);
-  if (index == -1) {
-    JS_FreeCString(js,file);
-    return JS_UNDEFINED;
-  }
   size_t len;
   void *data = mz_zip_reader_extract_file_to_heap(zip, file, &len, 0);
   JS_FreeCString(js,file);
-  JSValue ret = JS_NewArrayBufferCopy(js, data, len);
+  
+  if (!data)
+    return JS_UNDEFINED;
+
+  JSValue ret;
+  if (JS_ToBool(js, argv[1]))
+    ret = JS_NewStringLen(js, data, len);
+  else
+    ret = JS_NewArrayBufferCopy(js, data, len);
   free(data);
   return ret;
 }
 
 static const JSCFunctionListEntry js_reader_funcs[] = {
-    JS_CFUNC_DEF("mod", 1, js_reader_mod),
-    JS_CFUNC_DEF("exists", 1, js_reader_exists),
-    JS_CFUNC_DEF("slurp", 1, js_reader_slurp),
+  JS_CFUNC_DEF("mod", 1, js_reader_mod),
+  JS_CFUNC_DEF("exists", 1, js_reader_exists),
+  JS_CFUNC_DEF("slurp", 2, js_reader_slurp),
 };
 
-
-JSValue js_miniz(JSContext *js)
+JSValue js_miniz_use(JSContext *js)
 {
   JS_NewClassID(&js_reader_class_id);
   JS_NewClass(JS_GetRuntime(js), js_reader_class_id, &js_reader_class);
@@ -144,7 +155,7 @@ JSValue js_miniz(JSContext *js)
 }
 
 static int js_miniz_init(JSContext *ctx, JSModuleDef *m) {
-  JS_SetModuleExport(ctx, m, "default",js_miniz(ctx));
+  JS_SetModuleExport(ctx, m, "default",js_miniz_use(ctx));
   return 0;
 }
 
