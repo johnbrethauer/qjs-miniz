@@ -75,12 +75,30 @@ static const JSCFunctionListEntry js_miniz_funcs[] = {
 
 JSValue js_writer_add_file(JSContext *js, JSValue self, int argc, JSValue *argv)
 {
-  mz_zip_archive *zip = js2writer(js,self);
-  const char *file = JS_ToCString(js, argv[0]);
-  mz_zip_writer_add_file(zip, file, file, NULL, 0, MZ_DEFAULT_COMPRESSION);
-  JS_FreeCString(js,file);
+  if (argc < 2)
+    return JS_ThrowTypeError(js, "add_file requires (path, arrayBuffer)");
+  
+  mz_zip_archive *zip = js2writer(js, self);
+  const char *pathInZip = JS_ToCString(js, argv[0]);
+  if (!pathInZip)
+    return JS_ThrowTypeError(js, "Could not parse path argument");
+  
+  size_t dataLen;
+  void *data = JS_GetArrayBuffer(js, &dataLen, argv[1]);
+  if (!data) {
+    JS_FreeCString(js, pathInZip);
+    return JS_ThrowTypeError(js, "Second argument must be an ArrayBuffer");
+  }
+
+  int success = mz_zip_writer_add_mem(zip, pathInZip, data, dataLen, MZ_DEFAULT_COMPRESSION);
+  JS_FreeCString(js, pathInZip);
+  
+  if (!success)
+    return JS_ThrowInternalError(js, "Failed to add memory to zip");
+  
   return JS_UNDEFINED;
 }
+
 
 static const JSCFunctionListEntry js_writer_funcs[] = {
   JS_CFUNC_DEF("add_file", 1, js_writer_add_file),
